@@ -28,35 +28,13 @@ def index(request):
         pub_date__lt=dt.datetime.now(),
         is_published=True,
         category__is_published=True,
-    ).order_by('id')
+    ).order_by('-pub_date')
+
     paginator = Paginator(post_list, constant.CARDS_LIMIT_FOR_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
     context = {'page_obj': page_obj}
-    return render(request, template, context)
-
-
-def post_detail(request, id):
-    template = 'blog/detail.html'
-
-    post = get_object_or_404(
-        Post.objects.filter(
-            pub_date__lt=dt.datetime.now(),
-            is_published=True,
-            category__is_published=True
-        ),
-        pk=id
-    )
-    comments = Comment.objects.filter(
-        post=post,
-        created_at__lt=dt.datetime.now()
-    )
-
-    context = {
-        'post': post,
-        'comments': comments,
-    }
     return render(request, template, context)
 
 
@@ -83,38 +61,91 @@ def category_posts(request, category_slug):
     return render(request, template, context)
 
 
+def post_detail(request, id):
+    template = 'blog/detail.html'
+
+    post = get_object_or_404(
+        Post.objects.filter(
+            pub_date__lt=dt.datetime.now(),
+            is_published=True,
+            category__is_published=True
+        ),
+        pk=id
+    )
+    comments = Comment.objects.filter(
+        post=post,
+        created_at__lt=dt.datetime.now()
+    )
+
+    context = {
+        'post': post,
+        'comments': comments,
+    }
+    return render(request, template, context)
+
+
+# ------- Post Views -------
+class PostListView(ListView):
+    model = Post
+    queryset = Post.objects.filter(
+        pub_date__lte=timezone.now(),
+        is_published=True,
+        category__is_published=True
+    )
+    paginate_by = 10
+    ordering = 'pub_date'
+    template_name = 'blog/index.html'
+
+
 class PostCreateView(CreateView):
     model = Post
-    fields = '__all__'
-    template = 'blog/create.html'
+    fields = [
+        'title', 'text', 'pub_date', 'author', 'location', 'category', 'image'
+    ]
+    template_name = 'blog/create.html'
     success_url = reverse_lazy('blog:index')
 
 
 class PostUpdateView(UpdateView):
     model = Post
     fields = '__all__'
-    template = 'blog/create.html'
+    template_name = 'blog/create.html'
+    pk_url_kwarg = 'post_id'
 
     def get_success_url(self):
         post_id = self.kwargs['post_id']
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
 
 
-class PostDetailView(DetailView):
-    model = Post
-    template_name = 'blog/detail.html'
-    pk_url_kwarg = 'id'
-    context_object_name = 'post'
+# class PostDetailView(DetailView):
+#     model = Post
+#     template_name = 'blog/detail.html'
+#     pk_url_kwarg = 'id'
+#     context_object_name = 'post'
 
-    def get_object(self, queryset=None):
-        object = super().get_object()
-        if self.request.user != object.author and (
-            not object.is_published
-            or not object.category.is_published
-            or not object.pub_date <= timezone.now()
-        ):
-            raise Http404('Page not found')
-        return object
+#     def get_context_data(self, **kwargs):
+#         context = super(PostDetailView, self).get_context_data(**kwargs)
+#         context['comments'] = Comment.objects.filter(
+#             post_id=self.kwargs.get('post_id')
+#         )
+#         return context
+
+#     def get_object(self, queryset=None):
+#         object = super().get_object()
+#         if self.request.user != object.author and (
+#             not object.is_published
+#             or not object.category.is_published
+#             or not object.pub_date <= timezone.now()
+#         ):
+#             raise Http404('Page not found')
+#         return object
+
+
+class PostDeleteView(DeleteView):
+    model = Post
+    pk_url_kwarg = 'post_id'
+    template_name = 'blog/create.html'
+    success_url = reverse_lazy('blog:index')
 
 
 class UserDetailView(DetailView):
@@ -124,9 +155,7 @@ class UserDetailView(DetailView):
     template_name = 'blog/profile.html'
 
     def get_context_data(self, **kwargs):
-        # Call the base implementation first to get a context
         context = super(UserDetailView, self).get_context_data(**kwargs)
-        # Add in a QuerySet of all the books
         context['page_obj'] = Post.objects.select_related(
             'category', 'location', 'author',
         ).filter(
@@ -156,6 +185,7 @@ class CommentCreateView(CreateView):
 class CommentUpdateView(UpdateView):
     model = Comment
     fields = ['text']
+    pk_url_kwarg = 'comment_id'
     template_name = 'blog/comment.html'
 
     def get_object(self, queryset=None):
@@ -180,19 +210,3 @@ class CommentDeleteView(DeleteView):
     def get_success_url(self):
         post_id = self.kwargs['post_id']
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
-
-
-class PostDeleteView(DeleteView):
-    model = Post
-    success_url = reverse_lazy('blog:list_post')
-
-    def get_queryset(self):
-        owner = self.request.user
-        return self.model.objects.filter(owner=owner)
-# def add_comment(request, id):
-#     template = 'blog/index.html'
-#     context = {
-#         'post_list': [],
-#         'category': []
-#     }
-#     return render(request, template, context)
