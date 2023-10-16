@@ -95,13 +95,13 @@ def user_profile(request, username):
         ).order_by('-pub_date')
     else:
         posts = Post.objects.select_related(
-                'category', 'location', 'author',
-            ).filter(
-                pub_date__lt=dt.datetime.now(),
-                is_published=True,
-                category__is_published=True,
-                author=profile
-            ).order_by('-pub_date')
+            'category', 'location', 'author',
+        ).filter(
+            pub_date__lt=dt.datetime.now(),
+            is_published=True,
+            category__is_published=True,
+            author=profile
+        ).order_by('-pub_date')
     paginator = Paginator(posts, constant.CARDS_LIMIT_FOR_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
