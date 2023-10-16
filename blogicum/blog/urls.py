@@ -18,40 +18,45 @@ urlpatterns = [
         name='post_detail'
     ),
     path(
-        'posts/create',
-        views.PostCreateView.as_view(),
+        'posts/create/',
+        views.add_post,
         name='create_post'
     ),
     path(
-        'posts/<post_id>/edit/',
-        views.PostUpdateView.as_view(),
+        'posts/<int:post_id>/edit/',
+        views.edit_post,
         name='edit_post'
     ),
     path(
-        'posts/<post_id>/delete/',
-        views.PostDeleteView.as_view(),
+        'posts/<int:post_id>/delete/',
+        views.delete_post,
         name='delete_post'
     ),
     # ----------- Comment paths -----------
     path(
-        'posts/<post_id>/comment/',
+        'posts/<int:post_id>/comment/',
         views.CommentCreateView.as_view(),
         name='add_comment'
     ),
     path(
-        'posts/<post_id>/edit_comment/<comment_id>',
+        'posts/<post_id>/edit_comment/<comment_id>/',
         views.CommentUpdateView.as_view(),
         name='edit_comment'
     ),
     path(
-        'posts/<post_id>/delete_comment/<comment_id>/',
+        'posts/<int:post_id>/delete_comment/<int:comment_id>/',
         views.CommentDeleteView.as_view(),
         name='delete_comment'
     ),
     # ----------- User paths -----------
     path(
         'profile/<username>/',
-        views.UserDetailView.as_view(),
+        views.user_profile,
         name='profile'
+    ),
+    path(
+        'edit_profile',
+        views.edit_profile,
+        name='edit_profile'
     )
 ]

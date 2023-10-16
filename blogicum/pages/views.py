@@ -1,11 +1,25 @@
-from django.shortcuts import render
+from django.views.generic import TemplateView
+from django.contrib.auth import get_user_model
 
 
-def about(request):
-    template = 'pages/about.html'
-    return render(request, template)
+User = get_user_model()
 
 
-def rules(request):
-    template = 'pages/rules.html'
-    return render(request, template)
+class AboutTempView(TemplateView):
+    template_name = 'pages/about.html'
+
+
+class RulesTempView(TemplateView):
+    template_name = 'pages/rules.html'
+
+
+class TempView404(TemplateView):
+    template_name = 'pages/404.html'
+
+
+class TempView403(TemplateView):
+    template_name = 'pages/403csrf.html'
+
+
+class TempView500(TemplateView):
+    template_name = 'pages/500.html'
