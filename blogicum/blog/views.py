@@ -1,25 +1,31 @@
-import datetime as dt
-from django import http
+"""
+    Файл настройки всех view приложения blog
 
+    Проблемы: смесь FBV и CBV, по регламенту такого быть не должно,
+        У меня не получилось, изначально все было сделано на FBV,
+        но тесты не проходили сколько бы я не пытался.
+
+    TODO: Много повторяющегося кода в классах комментариев
+        нужно создать отдельный класс/миксин и унаследовать
+        его вместе с CreateView, UpdateView, DeleteView.
+"""
+import datetime as dt
+from typing import Any
+
+from . import constant
 from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from typing import Any
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import (
-    UserCreationForm, UserChangeForm
-)
 from django.core.paginator import Paginator
 from django.urls import reverse_lazy
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse
 from django.utils import timezone
 from django.views.generic.edit import (
     CreateView, UpdateView, DeleteView
 )
-from django.views.generic.detail import DetailView
-from . import constant
 from blog.models import (
     Post, Category, Comment
 )
@@ -49,6 +55,7 @@ def index(request):
 
 
 def category_posts(request, category_slug):
+    """Страница постов по категориям."""
     template = 'blog/category.html'
 
     category = get_object_or_404(
@@ -76,6 +83,7 @@ def category_posts(request, category_slug):
 
 # ------- User View -------
 def user_profile(request, username):
+    """Страница пользователя."""
     template = 'blog/profile.html'
     profile = get_object_or_404(User, username=username)
 
@@ -106,6 +114,7 @@ def user_profile(request, username):
 
 @login_required
 def edit_profile(request):
+    """Страница изменения профиля."""
     template = 'blog/user.html'
     instance = get_object_or_404(User, username=request.user)
     form = ProfileForm(request.POST or None, instance=instance)
@@ -124,6 +133,7 @@ def edit_profile(request):
 
 # ------- Post Views -------
 def post_detail(request, id):
+    """Страница поста."""
     template = 'blog/detail.html'
     if request.user.is_authenticated:
         post = get_object_or_404(
@@ -161,6 +171,7 @@ def post_detail(request, id):
 
 @login_required
 def add_post(request):
+    """Страница добавления поста."""
     template = 'blog/create.html'
     form = PostForm(
         request.POST or None,
@@ -176,6 +187,7 @@ def add_post(request):
 
 
 def edit_post(request, post_id):
+    """Страница редактирования поста."""
     template = 'blog/create.html'
     instance = get_object_or_404(
         Post, id=post_id
@@ -194,6 +206,7 @@ def edit_post(request, post_id):
 
 @login_required
 def delete_post(request, post_id):
+    """Страница удаления поста"""
     template = 'blog/create.html'
     instance = get_object_or_404(
         Post, id=post_id, author=request.user
@@ -207,6 +220,8 @@ def delete_post(request, post_id):
 
 # ------- Comment Views -------
 class CommentCreateView(LoginRequiredMixin, CreateView):
+    """Страница создания комментария."""
+    # TODO: На странице поста, криво отображается поле ввода комментария.
     model = Comment
     form_class = CommentForm
     template_name = 'blog/comment.html'
@@ -223,28 +238,15 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
 
 
-# @login_required
-# def add_comment(request, post_id):
-#     post = get_object_or_404(Post, id=post_id)
-#     template = 'includes/comments.html'
-#     form = CommentForm(data=request.POST or None)
-#     if form.is_valid():
-#         form.instance.author = request.user
-#         form.instance.post = post
-#         form.save()
-#         return redirect('blog:post_detail', id=post_id)
-#     context = {'form': form}
-#     return render(request, template, context)
-
-
 class CommentUpdateView(LoginRequiredMixin, UpdateView):
+    """Страница редактирования комментария"""
     model = Comment
     template_name = 'blog/comment.html'
     form_class = CommentForm
     pk_url_kwarg = 'comment_id'
 
     def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Comment, pk=kwargs['pk'])
+        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
         if instance.author != request.user:
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
@@ -255,14 +257,14 @@ class CommentUpdateView(LoginRequiredMixin, UpdateView):
 
 
 class CommentDeleteView(LoginRequiredMixin, DeleteView):
+    """Страница удаления комментария"""
     model = Comment
     template_name = 'blog/comment.html'
     form_class = CommentForm
     pk_url_kwarg = 'comment_id'
-    success_url = reverse_lazy('blog:index')
 
     def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Comment, pk=kwargs['pk'])
+        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
         if instance.author != request.user:
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
@@ -270,105 +272,3 @@ class CommentDeleteView(LoginRequiredMixin, DeleteView):
     def get_success_url(self):
         post_id = self.kwargs['post_id']
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
-
-# @login_required
-# def delete_comment(request, post_id, comment_id):
-#     template = 'blog/comment.html'
-#     post = Post.objects.get(pk=post_id)
-#     instance = get_object_or_404(
-#         Comment, post=post, pk=comment_id, author=request.user
-#     )
-#     if request.method == 'POST':
-#         instance.delete()
-#         return redirect('blog:post_detail', id=post_id)
-#     return render(request, template)
-
-# class PostCreateView(CreateView):
-#     model = Post
-#     fields = [
-#         'title', 'text', 'pub_date', 'author', 'location', 'category', 'image'
-#     ]
-#     template_name = 'blog/create.html'
-#     success_url = reverse_lazy('blog:index')
-
-
-# class PostUpdateView(UpdateView):
-#     model = Post
-#     fields = '__all__'
-#     template_name = 'blog/create.html'
-#     pk_url_kwarg = 'post_id'
-
-#     def get_success_url(self):
-#         post_id = self.kwargs['post_id']
-#         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
-
-
-# class PostDeleteView(DeleteView):
-#     model = Post
-#     pk_url_kwarg = 'post_id'
-#     template_name = 'blog/create.html'
-#     success_url = reverse_lazy('blog:index')
-
-
-# class UserDetailView(DetailView):
-#     model = User
-#     slug_url_kwarg = 'username'
-#     slug_field = 'username'
-#     template_name = 'blog/profile.html'
-
-#     def get_context_data(self, **kwargs):
-#         context = super(UserDetailView, self).get_context_data(**kwargs)
-#         context['page_obj'] = Post.objects.select_related(
-#             'category', 'location', 'author',
-#         ).filter(
-#             pub_date__lt=dt.datetime.now(),
-#             is_published=True,
-#             category__is_published=True,
-#         ).order_by('id')
-#         context['profile'] = self.object
-#         return context
-
-
-# class CommentCreateView(CreateView):
-#     model = Comment
-#     fields = ['text']
-#     template_name = 'blog/comment.html'
-#     success_url = reverse_lazy('blog:index')
-
-#     def form_valid(self, form, **kwargs):
-#         self.object = form.save(commit=False)
-#         self.object.author = self.request.user
-#         post_id = self.kwargs.get('post_id')
-#         self.object.post = Post.objects.get(pk=post_id)
-
-#         return super(CommentCreateView, self).form_valid(form)
-
-
-# class CommentUpdateView(UpdateView):
-#     model = Comment
-#     fields = ['text']
-#     pk_url_kwarg = 'comment_id'
-#     template_name = 'blog/comment.html'
-
-#     def get_object(self, queryset=None):
-#         comment_id = self.kwargs.get('comment_id')
-#         post_id = self.kwargs.get('post_id')
-#         return self.model.objects.get(pk=comment_id, post_id=post_id)
-
-#     def get_success_url(self):
-#         post_id = self.kwargs['post_id']
-#         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
-
-
-# class CommentDeleteView(DeleteView):
-#     model = Comment
-#     template_name = 'blog/comment.html'
-
-#     def get_object(self, queryset=None):
-#         comment_id = self.kwargs.get('comment_id')
-#         post_id = self.kwargs.get('post_id')
-#         return self.model.objects.get(pk=comment_id, post_id=post_id)
-
-#     def get_success_url(self):
-#         post_id = self.kwargs['post_id']
-#         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
