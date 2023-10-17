@@ -116,16 +116,10 @@ def user_profile(request, username):
 def edit_profile(request):
     """Страница изменения профиля."""
     template = 'blog/user.html'
-    instance = get_object_or_404(User, username=request.user)
-    form = ProfileForm(request.POST or None, instance=instance)
-    if request.user == instance:
-        if form.is_valid():
-            form.save()
-            return redirect('blog:profile', username=request.user)
-        else:
-            print(form.errors.as_data())
-    else:
-        return redirect('pages:403csrf')
+    form = ProfileForm(request.POST or None, instance=request.user)
+    if form.is_valid():
+        form.save()
+        return redirect('blog:profile', username=request.user)
     context = {'form': form}
 
     return render(request, template, context)
@@ -135,6 +129,7 @@ def edit_profile(request):
 def post_detail(request, id):
     """Страница поста."""
     template = 'blog/detail.html'
+
     if request.user.is_authenticated:
         post = get_object_or_404(
             Post.objects.filter(
@@ -144,7 +139,7 @@ def post_detail(request, id):
                     is_published=True,
                     category__is_published=True,
                 )
-            ),
+            ).prefetch_related('comment_set'),
             pk=id
         )
     else:
@@ -153,13 +148,12 @@ def post_detail(request, id):
                 pub_date__lt=timezone.now(),
                 is_published=True,
                 category__is_published=True
-            ),
+            ).prefetch_related('comment_set'),
             pk=id
         )
-    comments = Comment.objects.filter(
-        post=post,
-        created_at__lt=timezone.now()
-    )
+
+    comments = post.comment_set.all()
+
     form = CommentForm(data=request.POST or None)
     context = {
         'form': form,
@@ -180,12 +174,14 @@ def add_post(request):
     if form.is_valid():
         instance = form.save(commit=False)
         instance.author = request.user
+        instance.pub_date = timezone.now()
         instance.save()
         return redirect('blog:profile', username=request.user)
     context = {'form': form}
     return render(request, template, context)
 
 
+@login_required
 def edit_post(request, post_id):
     """Страница редактирования поста."""
     template = 'blog/create.html'
@@ -214,18 +210,32 @@ def delete_post(request, post_id):
     if request.method == 'POST':
         instance.delete()
         return redirect('blog:index')
-    # context = {'form': form}
     return render(request, template)
 
 
 # ------- Comment Views -------
-class CommentCreateView(LoginRequiredMixin, CreateView):
-    """Страница создания комментария."""
-    # TODO: На странице поста, криво отображается поле ввода комментария.
+class BaseCommentMixin:
     model = Comment
     form_class = CommentForm
     template_name = 'blog/comment.html'
 
+    def get_success_url(self):
+        post_id = self.kwargs['post_id']
+        return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
+
+
+class ChangeCommentMixin(BaseCommentMixin):
+    pk_url_kwarg = 'comment_id'
+
+    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
+        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
+        if instance.author != request.user:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+class CommentCreateView(LoginRequiredMixin, BaseCommentMixin, CreateView):
+    """Страница создания комментария."""
     def form_valid(self, form, **kwargs):
         post_id = self.kwargs.get('post_id')
         post = get_object_or_404(Post, id=post_id)
@@ -233,42 +243,12 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
         form.instance.post = post
         return super().form_valid(form)
 
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
 
-
-class CommentUpdateView(LoginRequiredMixin, UpdateView):
+class CommentUpdateView(LoginRequiredMixin, ChangeCommentMixin, UpdateView):
     """Страница редактирования комментария"""
-    model = Comment
-    template_name = 'blog/comment.html'
-    form_class = CommentForm
-    pk_url_kwarg = 'comment_id'
-
-    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
-        if instance.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
+    pass
 
 
-class CommentDeleteView(LoginRequiredMixin, DeleteView):
+class CommentDeleteView(LoginRequiredMixin, ChangeCommentMixin, DeleteView):
     """Страница удаления комментария"""
-    model = Comment
-    template_name = 'blog/comment.html'
-    form_class = CommentForm
-    pk_url_kwarg = 'comment_id'
-
-    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
-        if instance.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
+    pass
