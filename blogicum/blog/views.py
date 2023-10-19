@@ -192,17 +192,20 @@ def edit_post(request, post_id):
     return render(request, template, context)
 
 
-@login_required
-def delete_post(request, post_id):
-    """Страница удаления поста"""
-    template = 'blog/create.html'
-    instance = get_object_or_404(
-        Post, id=post_id, author=request.user
-    )
-    if request.method == 'POST':
-        instance.delete()
-        return redirect('blog:index')
-    return render(request, template)
+class PostDeleteView(LoginRequiredMixin, DeleteView):
+    model = Post
+    form_class = PostForm
+    pk_url_kwarg = 'post_id'
+    template_name = 'blog/comment.html'
+
+    def get_success_url(self):
+        return reverse_lazy('blog:index')
+
+    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
+        instance = get_object_or_404(Post, pk=kwargs['post_id'])
+        if instance.author != request.user:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
 
 
 # ------- Comment Views -------

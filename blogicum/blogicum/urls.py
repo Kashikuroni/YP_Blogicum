@@ -5,7 +5,6 @@ from django.urls import path, include, reverse_lazy
 from django.conf import settings
 from django.contrib import admin
 
-
 handler404 = 'core.views.page_not_found'
 handler500 = 'core.views.error_500'
 
