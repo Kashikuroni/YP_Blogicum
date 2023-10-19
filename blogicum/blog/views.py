@@ -15,7 +15,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth import get_user_model
-from django.core.paginator import Paginator
+from django.core.paginator import Paginator, Page
 from django.urls import reverse_lazy
 from django.http import HttpResponse
 from django.utils import timezone
@@ -30,50 +30,51 @@ from .forms import PostForm, CommentForm, ProfileForm
 User = get_user_model()
 
 
-def index(request):
-    """Главная страница проекта со всеми постами."""
+def get_page_obj(request: HttpResponse, filters: dict) -> Page:
 
-    post_list = Post.objects.select_related(
+    posts = Post.objects.select_related(
         'category', 'location', 'author',
-    ).filter(
-        pub_date__lt=timezone.now(),
-        is_published=True,
-        category__is_published=True,
-    ).order_by('-pub_date')
+    ).filter(**filters).order_by('-pub_date')
 
-    paginator = Paginator(post_list, constant.CARDS_LIMIT_FOR_PAGE)
+    paginator = Paginator(posts, constant.CARDS_LIMIT_FOR_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    return page_obj
 
-    template = 'blog/index.html'
+
+def index(request):
+    """Главная страница проекта со всеми постами."""
+    filters = {
+        'pub_date__lt': timezone.now(),
+        'is_published': True,
+        'category__is_published': True,
+    }
+    page_obj = get_page_obj(request, filters)
+
     context = {'page_obj': page_obj}
+    template = 'blog/index.html'
     return render(request, template, context)
 
 
 def category_posts(request, category_slug):
     """Страница постов по категориям."""
-    template = 'blog/category.html'
 
     category = get_object_or_404(
         Category.objects.filter(is_published=True),
         slug=category_slug
     )
-    posts = Post.objects.select_related(
-        'category', 'location', 'author'
-    ).filter(
-        pub_date__lt=timezone.now(),
-        category=category,
-        is_published=True,
-    ).order_by('-pub_date')
-
-    paginator = Paginator(posts, constant.CARDS_LIMIT_FOR_PAGE)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    filters = {
+        'pub_date__lt': timezone.now(),
+        'category': category,
+        'is_published': True,
+    }
+    page_obj = get_page_obj(request, filters)
 
     context = {
         'page_obj': page_obj,
         'category': category
     }
+    template = 'blog/category.html'
     return render(request, template, context)
 
 
@@ -84,23 +85,18 @@ def user_profile(request, username):
     profile = get_object_or_404(User, username=username)
 
     if request.user == profile:
-        posts = Post.objects.select_related(
-            'category', 'location', 'author',
-        ).filter(
-            author=profile
-        ).order_by('-pub_date')
+        filters = {
+            'author': profile
+        }
     else:
-        posts = Post.objects.select_related(
-            'category', 'location', 'author',
-        ).filter(
-            pub_date__lt=dt.datetime.now(),
-            is_published=True,
-            category__is_published=True,
-            author=profile
-        ).order_by('-pub_date')
-    paginator = Paginator(posts, constant.CARDS_LIMIT_FOR_PAGE)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+        filters = {
+            'pub_date__lt': dt.datetime.now(),
+            'is_published': True,
+            'category__is_published': True,
+            'author': profile
+        }
+
+    page_obj = get_page_obj(request, filters)
     context = {
         'page_obj': page_obj,
         'profile': profile,
@@ -135,7 +131,7 @@ def post_detail(request, id):
                     is_published=True,
                     category__is_published=True,
                 )
-            ).prefetch_related('comment_set'),
+            ).prefetch_related('comments'),
             pk=id
         )
     else:
@@ -144,11 +140,11 @@ def post_detail(request, id):
                 pub_date__lt=timezone.now(),
                 is_published=True,
                 category__is_published=True
-            ).prefetch_related('comment_set'),
+            ).prefetch_related('comments'),
             pk=id
         )
 
-    comments = post.comment_set.all()
+    comments = post.comments.all()
 
     form = CommentForm(data=request.POST or None)
     context = {
@@ -170,7 +166,6 @@ def add_post(request):
     if form.is_valid():
         instance = form.save(commit=False)
         instance.author = request.user
-        instance.pub_date = timezone.now()
         instance.save()
         return redirect('blog:profile', username=request.user)
     context = {'form': form}
@@ -189,6 +184,7 @@ def edit_post(request, post_id):
         if form.is_valid():
             form.save()
             return redirect('blog:post_detail', id=post_id)
+    # Eсли убрать эту ветку еlse, то будет ошибка. Я не могу убрать эту ветку.
     else:
         return redirect('blog:post_detail', id=post_id)
 
