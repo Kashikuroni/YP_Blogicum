@@ -52,7 +52,6 @@ def index(request):
 
 def category_posts(request, category_slug):
     """Страница постов по категориям."""
-
     category = get_object_or_404(
         Category.objects.filter(is_published=True),
         slug=category_slug
@@ -212,7 +211,6 @@ class ChangeCommentMixin(BaseCommentMixin, DispatchMixin):
 
 
 class CommentCreateView(LoginRequiredMixin, BaseCommentMixin, CreateView):
-    """Страница создания комментария."""
     def form_valid(self, form, **kwargs):
         post_id = self.kwargs.get('post_id')
         post = get_object_or_404(Post, id=post_id)
@@ -222,10 +220,8 @@ class CommentCreateView(LoginRequiredMixin, BaseCommentMixin, CreateView):
 
 
 class CommentUpdateView(LoginRequiredMixin, ChangeCommentMixin, UpdateView):
-    """Страница редактирования комментария"""
     pass
 
 
 class CommentDeleteView(LoginRequiredMixin, ChangeCommentMixin, DeleteView):
-    """Страница удаления комментария"""
     pass
