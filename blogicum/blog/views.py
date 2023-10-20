@@ -1,14 +1,6 @@
-"""
-    Файл настройки всех view приложения blog
-
-    Проблемы: смесь FBV и CBV, по регламенту такого быть не должно,
-        У меня не получилось, изначально все было сделано на FBV,
-        но тесты не проходили сколько бы я не пытался.
-"""
 import datetime as dt
 from typing import Any
 
-from . import constant
 from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -22,6 +14,8 @@ from django.utils import timezone
 from django.views.generic.edit import (
     CreateView, UpdateView, DeleteView
 )
+
+from . import constants
 from blog.models import (
     Post, Category, Comment
 )
@@ -34,9 +28,9 @@ def get_page_obj(request: HttpResponse, filters: dict) -> Page:
 
     posts = Post.objects.select_related(
         'category', 'location', 'author',
-    ).filter(**filters).order_by('-pub_date')
+    ).filter(filters).order_by('-pub_date')
 
-    paginator = Paginator(posts, constant.CARDS_LIMIT_FOR_PAGE)
+    paginator = Paginator(posts, constants.CARDS_LIMIT_FOR_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     return page_obj
@@ -44,11 +38,11 @@ def get_page_obj(request: HttpResponse, filters: dict) -> Page:
 
 def index(request):
     """Главная страница проекта со всеми постами."""
-    filters = {
-        'pub_date__lt': timezone.now(),
-        'is_published': True,
-        'category__is_published': True,
-    }
+    filters = Q(
+        pub_date__lt=timezone.now(),
+        is_published=True,
+        category__is_published=True,
+    )
     page_obj = get_page_obj(request, filters)
 
     context = {'page_obj': page_obj}
@@ -63,11 +57,11 @@ def category_posts(request, category_slug):
         Category.objects.filter(is_published=True),
         slug=category_slug
     )
-    filters = {
-        'pub_date__lt': timezone.now(),
-        'category': category,
-        'is_published': True,
-    }
+    filters = Q(
+        pub_date__lt=timezone.now(),
+        category=category,
+        is_published=True,
+    )
     page_obj = get_page_obj(request, filters)
 
     context = {
@@ -84,17 +78,13 @@ def user_profile(request, username):
     template = 'blog/profile.html'
     profile = get_object_or_404(User, username=username)
 
-    if request.user == profile:
-        filters = {
-            'author': profile
-        }
-    else:
-        filters = {
-            'pub_date__lt': dt.datetime.now(),
-            'is_published': True,
-            'category__is_published': True,
-            'author': profile
-        }
+    filters = Q(author=profile)
+    if request.user != profile:
+        filters &= Q(
+            pub_date__lt=dt.datetime.now(),
+            is_published=True,
+            category__is_published=True,
+        )
 
     page_obj = get_page_obj(request, filters)
     context = {
@@ -121,26 +111,21 @@ def edit_profile(request):
 def post_detail(request, id):
     """Страница поста."""
     template = 'blog/detail.html'
-
+    filters = Q(
+        pub_date__lt=timezone.now(),
+        is_published=True,
+        category__is_published=True,
+    )
     if request.user.is_authenticated:
         post = get_object_or_404(
             Post.objects.filter(
-                Q(author=request.user)
-                | Q(
-                    pub_date__lt=timezone.now(),
-                    is_published=True,
-                    category__is_published=True,
-                )
+                filters | Q(author=request.user)
             ).prefetch_related('comments'),
             pk=id
         )
     else:
         post = get_object_or_404(
-            Post.objects.filter(
-                pub_date__lt=timezone.now(),
-                is_published=True,
-                category__is_published=True
-            ).prefetch_related('comments'),
+            Post.objects.filter(filters).prefetch_related('comments'),
             pk=id
         )
 
@@ -180,19 +165,28 @@ def edit_post(request, post_id):
         Post, id=post_id
     )
     form = PostForm(request.POST or None, instance=instance)
-    if request.user == instance.author:
-        if form.is_valid():
-            form.save()
-            return redirect('blog:post_detail', id=post_id)
-    # Eсли убрать эту ветку еlse, то будет ошибка. Я не могу убрать эту ветку.
-    else:
+    if request.user != instance.author:
+        return redirect('blog:post_detail', id=post_id)
+    if form.is_valid():
+        form.save()
         return redirect('blog:post_detail', id=post_id)
 
     context = {'form': form}
     return render(request, template, context)
 
 
-class PostDeleteView(LoginRequiredMixin, DeleteView):
+class DispatchMixin:
+    pk_url_kwarg = None
+    model = None
+
+    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
+        instance = get_object_or_404(self.model, pk=kwargs[self.pk_url_kwarg])
+        if instance.author != request.user:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+class PostDeleteView(LoginRequiredMixin, DispatchMixin, DeleteView):
     model = Post
     form_class = PostForm
     pk_url_kwarg = 'post_id'
@@ -200,12 +194,6 @@ class PostDeleteView(LoginRequiredMixin, DeleteView):
 
     def get_success_url(self):
         return reverse_lazy('blog:index')
-
-    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Post, pk=kwargs['post_id'])
-        if instance.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
 
 
 # ------- Comment Views -------
@@ -219,14 +207,8 @@ class BaseCommentMixin:
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
 
 
-class ChangeCommentMixin(BaseCommentMixin):
+class ChangeCommentMixin(BaseCommentMixin, DispatchMixin):
     pk_url_kwarg = 'comment_id'
-
-    def dispatch(self, request, *args: Any, **kwargs: Any) -> HttpResponse:
-        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
-        if instance.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
 
 
 class CommentCreateView(LoginRequiredMixin, BaseCommentMixin, CreateView):
