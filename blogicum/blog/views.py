@@ -24,7 +24,7 @@ from .forms import PostForm, CommentForm, ProfileForm
 User = get_user_model()
 
 
-def get_page_obj(request: HttpResponse, filters: dict) -> Page:
+def get_page_obj(request: HttpResponse, filters) -> Page:
 
     posts = Post.objects.select_related(
         'category', 'location', 'author',
@@ -116,17 +116,12 @@ def post_detail(request, id):
         category__is_published=True,
     )
     if request.user.is_authenticated:
-        post = get_object_or_404(
-            Post.objects.filter(
-                filters | Q(author=request.user)
-            ).prefetch_related('comments'),
-            pk=id
-        )
-    else:
-        post = get_object_or_404(
-            Post.objects.filter(filters).prefetch_related('comments'),
-            pk=id
-        )
+        filters = filters | Q(author=request.user)
+
+    post = get_object_or_404(
+        Post.objects.filter(filters).prefetch_related('comments'),
+        pk=id
+    )
 
     comments = post.comments.all()
 
@@ -174,7 +169,7 @@ def edit_post(request, post_id):
     return render(request, template, context)
 
 
-class DispatchMixin:
+class IsAuthorMixin:
     pk_url_kwarg = None
     model = None
 
@@ -185,7 +180,7 @@ class DispatchMixin:
         return super().dispatch(request, *args, **kwargs)
 
 
-class PostDeleteView(LoginRequiredMixin, DispatchMixin, DeleteView):
+class PostDeleteView(LoginRequiredMixin, IsAuthorMixin, DeleteView):
     model = Post
     form_class = PostForm
     pk_url_kwarg = 'post_id'
@@ -206,7 +201,7 @@ class BaseCommentMixin:
         return reverse_lazy('blog:post_detail', kwargs={'id': post_id})
 
 
-class ChangeCommentMixin(BaseCommentMixin, DispatchMixin):
+class ChangeCommentMixin(BaseCommentMixin, IsAuthorMixin):
     pk_url_kwarg = 'comment_id'
 
 
