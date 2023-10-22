@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from blog.constants import SYMBOL_LIMIT_IN_MODELS
+
 User = get_user_model()
 
 
@@ -22,7 +24,10 @@ class BaseModel(models.Model):
 
 
 class Category(BaseModel):
-    title = models.CharField('Заголовок', max_length=256)
+    title = models.CharField(
+        'Заголовок',
+        max_length=SYMBOL_LIMIT_IN_MODELS
+    )
     description = models.TextField('Описание')
     slug = models.SlugField(
         'Идентификатор',
@@ -40,7 +45,10 @@ class Category(BaseModel):
 
 
 class Location(BaseModel):
-    name = models.CharField('Название места', max_length=256)
+    name = models.CharField(
+        'Название места',
+        max_length=SYMBOL_LIMIT_IN_MODELS
+    )
 
     class Meta:
         verbose_name = 'местоположение'
@@ -51,7 +59,10 @@ class Location(BaseModel):
 
 
 class Post(BaseModel):
-    title = models.CharField('Заголовок', max_length=256)
+    title = models.CharField(
+        'Заголовок',
+        max_length=SYMBOL_LIMIT_IN_MODELS
+    )
     text = models.TextField('Текст')
     pub_date = models.DateTimeField(
         'Дата и время публикации',
